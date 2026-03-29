@@ -5,12 +5,11 @@ export function AppLayout() {
   const loc = useLocation()
   const { role, personId, logout } = useAuth()
   const onHome = loc.pathname === '/'
+  const onAdmin = loc.pathname === '/admin'
+  const showAdminNav = (role === 'banker' || role === 'admin') && !!personId
 
   return (
     <div className="shell">
-      <a href="#main-content" className="skip-link">
-        К содержимому
-      </a>
       <header className="shell__header">
         <div className="shell__brand">
           <Link to="/" className="shell__logo">
@@ -26,28 +25,23 @@ export function AppLayout() {
           >
             Главная
           </Link>
-          <Link
-            to="/banker"
-            className={`shell__nav-link${loc.pathname === '/banker' ? ' shell__nav-link--active' : ''}`}
-            aria-current={loc.pathname === '/banker' ? 'page' : undefined}
-          >
-            Банкир
-          </Link>
-          <Link
-            to="/client"
-            className={`shell__nav-link${loc.pathname === '/client' ? ' shell__nav-link--active' : ''}`}
-            aria-current={loc.pathname === '/client' ? 'page' : undefined}
-          >
-            Клиент
-          </Link>
+          {showAdminNav && (
+            <Link
+              to="/admin"
+              className={`shell__nav-link${onAdmin ? ' shell__nav-link--active' : ''}`}
+              aria-current={onAdmin ? 'page' : undefined}
+            >
+              Администрирование
+            </Link>
+          )}
+          {role && personId && (
+            <button type="button" className="shell__nav-link shell__nav-link--action" onClick={() => logout()}>
+              Выйти
+            </button>
+          )}
           <Link to="/login" className="shell__nav-link">
             Вход
           </Link>
-          {role && personId && (
-            <button type="button" className="btn btn--ghost btn--sm" onClick={() => logout()}>
-              Выйти ({role})
-            </button>
-          )}
         </nav>
       </header>
 

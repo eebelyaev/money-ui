@@ -6,7 +6,15 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { clearAuth, getStoredPersonId, getStoredRole, setAuth, type Role } from './storage'
+import {
+  clearAuth,
+  getStoredPersonId,
+  getStoredRole,
+  setAuth,
+  setAuthSession,
+  type AuthSession,
+  type Role,
+} from './storage'
 
 type AuthState = {
   personId: number | null
@@ -14,7 +22,10 @@ type AuthState = {
 }
 
 type AuthContextValue = AuthState & {
-  login: (personId: number, role: Role) => void
+  /** Сессия с JWT после успешного POST /auth/login. */
+  loginWithSession: (session: AuthSession) => void
+  /** Режим разработки: без токена, только id и роль в sessionStorage. */
+  loginDevHeaders: (personId: number, role: Role) => void
   logout: () => void
 }
 
@@ -32,7 +43,12 @@ function readInitial(): AuthState {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(readInitial)
 
-  const login = useCallback((personId: number, role: Role) => {
+  const loginWithSession = useCallback((session: AuthSession) => {
+    setAuthSession(session)
+    setState({ personId: session.personId, role: session.role })
+  }, [])
+
+  const loginDevHeaders = useCallback((personId: number, role: Role) => {
     setAuth(personId, role)
     setState({ personId, role })
   }, [])
@@ -45,10 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       ...state,
-      login,
+      loginWithSession,
+      loginDevHeaders,
       logout,
     }),
-    [state, login, logout],
+    [state, loginWithSession, loginDevHeaders, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

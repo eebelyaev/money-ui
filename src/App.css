@@ -70,6 +70,12 @@
   border-color: var(--color-border);
 }
 
+button.shell__nav-link--action {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+}
+
 .shell__main {
   flex: 1;
   padding: var(--space-6) 0 var(--space-8);
@@ -288,6 +294,19 @@
   margin: 0 0 var(--space-4);
 }
 
+.card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.card__head .card__title {
+  margin: 0;
+}
+
 .section-title {
   font-size: var(--text-base);
   font-weight: 600;
@@ -341,6 +360,39 @@
   color: var(--color-text-muted);
   margin: 0;
   max-width: 36rem;
+}
+
+/* Contract page: period + date inputs on one row */
+.pay-period-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.pay-period-filter__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.pay-period-filter__field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pay-period-filter__field .field-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.pay-period-filter__field .input[type='date'] {
+  width: auto;
+  min-width: 10.25rem;
+  max-width: 12rem;
 }
 
 .input,
@@ -415,6 +467,31 @@ table.data th {
   color: var(--color-text-muted);
 }
 
+table.data tfoot td,
+table.data tfoot th {
+  border-top: 2px solid var(--color-border-strong);
+  background: var(--color-primary-muted);
+  font-size: var(--text-sm);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+  text-align: left;
+  font-weight: 700;
+  color: var(--color-text);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+table.data tfoot td.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+table.data tfoot .data-table-foot__meta {
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
 table.data tbody tr:nth-child(even) {
   background: rgba(246, 247, 249, 0.6);
 }
@@ -433,6 +510,164 @@ table.data th.num {
 
 table.data .cell-actions {
   white-space: nowrap;
+}
+
+/* Главная (банкир / клиент): плотные строки (размер шрифта как у обычной .data) */
+table.data.data--tight th,
+table.data.data--tight td {
+  padding: var(--space-1) var(--space-2);
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+table.data.data--tight tfoot td,
+table.data.data--tight tfoot th {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+/* Payments table on contract page: direction icons + tinted rows */
+table.payment-table tbody tr.payment-row:nth-child(even),
+table.payment-table tbody tr.payment-row {
+  background: var(--color-surface);
+}
+
+/* Банкир — плюс (зачисление на договор); клиент — минус (возврат) */
+table.payment-table tbody tr.payment-row--banker {
+  background: color-mix(in srgb, var(--color-success-bg) 88%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-success);
+}
+
+table.payment-table tbody tr.payment-row--client {
+  background: color-mix(in srgb, var(--color-primary-muted) 92%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-primary);
+}
+
+table.payment-table tbody tr.payment-row--other {
+  background: color-mix(in srgb, var(--color-warning-bg) 85%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-warning);
+}
+
+table.payment-table tbody tr.payment-row.is-editing {
+  background: var(--color-primary-muted);
+  outline: 1px solid var(--color-primary);
+  box-shadow: inset 3px 0 0 0 var(--color-primary);
+}
+
+table.payment-table th.payment-table__kind,
+table.payment-table td.payment-table__icon-cell {
+  width: 3rem;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.payment-dir {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.payment-dir__svg {
+  display: block;
+}
+
+.payment-dir--banker {
+  color: var(--color-success);
+}
+
+.payment-dir--client {
+  color: var(--color-primary);
+}
+
+.payment-dir--other {
+  color: var(--color-text-muted);
+}
+
+/* Новый платёж: выбор клиент / банкир (− / +) */
+.payment-payer-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.payment-payer-toggle__btn {
+  flex: 1 1 8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.payment-payer-toggle__btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+
+.payment-payer-toggle__btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.payment-payer-toggle__btn--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.payment-payer-toggle__sign {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.payment-payer-toggle__btn--active .payment-payer-toggle__sign {
+  color: var(--color-primary);
+}
+
+.payment-payer-toggle__main {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.payment-payer-toggle__sub {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+/* Table accordion (e.g. client contract history under row) */
+.table-accordion__row td.accordion-panel {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-4) var(--space-5);
+  vertical-align: top;
+}
+
+.accordion-panel--nested {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg);
+}
+
+.accordion-panel__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0 0 var(--space-4);
+  color: var(--color-text);
+  letter-spacing: -0.01em;
 }
 
 /* Loading */
@@ -534,7 +769,278 @@ table.data .cell-actions {
   margin-right: auto;
 }
 
-/* Contract summary grid */
+/* Contract card — flat spec list */
+.contract-spec {
+  margin: 0;
+}
+
+.contract-spec__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.contract-spec__row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.contract-spec__row:first-child {
+  padding-top: 0;
+}
+
+.contract-spec dt {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  flex: 0 1 10rem;
+  min-width: 8rem;
+}
+
+.contract-spec dd {
+  margin: 0;
+  flex: 1 1 12rem;
+  text-align: right;
+  min-width: 0;
+}
+
+.contract-spec__value {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.contract-spec__value--amount {
+  font-size: var(--text-lg);
+  color: var(--color-primary);
+}
+
+.contract-spec__hint {
+  margin: var(--space-2) 0 0;
+  text-align: right;
+  max-width: 28rem;
+  margin-left: auto;
+}
+
+.contract-spec__row--debt dd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.contract-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.contract-card__head .card__title {
+  margin-bottom: 0;
+}
+
+.contract-card__recalc {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.contract-recalc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.contract-recalc-row__label {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.contract-recalc-row__date {
+  width: auto;
+  min-width: 10.25rem;
+  max-width: 12rem;
+}
+
+.contract-recalc-row__btn {
+  flex: 0 0 auto;
+}
+
+.contracts-history-table__icon {
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+table.data.contracts-history-table th,
+table.data.contracts-history-table td {
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+  line-height: 1.3;
+}
+
+/* История остатков: как смайлики — платёж 🔹 синий; начисление 🔺 красный; выдача 🔸 жёлтая */
+table.data.contracts-history-table tbody tr.contracts-history-row--decrease {
+  background: color-mix(in srgb, var(--color-primary-muted) 88%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-primary);
+}
+
+table.data.contracts-history-table tbody tr.contracts-history-row--accrued {
+  background: color-mix(in srgb, var(--color-danger-bg) 88%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-danger);
+}
+
+table.data.contracts-history-table tbody tr.contracts-history-row--increase {
+  background: color-mix(in srgb, var(--color-warning-bg) 88%, var(--color-surface));
+  box-shadow: inset 3px 0 0 0 var(--color-warning);
+}
+
+.contracts-history-col-dir {
+  width: 2.5rem;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.contracts-history-col-dir abbr {
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.contracts-history-dir-glyph {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.contract-history-toolbar {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.contract-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+}
+
+.contract-history-toggle:hover .contract-history-toggle__title {
+  color: var(--color-text);
+}
+
+.contract-history-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.contract-history-toggle__title {
+  margin: 0;
+}
+
+.contract-history-toggle__chevron {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1;
+  width: 1.25rem;
+  text-align: center;
+}
+
+.contract-history-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.contracts-history-period-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.contracts-history-period-wrap__label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.contracts-history-period-toggle {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.contracts-history-period-toggle__btn {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-right: 1px solid var(--color-border);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.contracts-history-period-toggle__btn:last-child {
+  border-right: none;
+}
+
+.contracts-history-period-toggle__btn:hover {
+  background: var(--color-primary-muted);
+  color: var(--color-text);
+}
+
+.contracts-history-period-toggle__btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.contracts-history-period-toggle__btn--active {
+  background: var(--color-primary-muted);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+}
+
+/* Contract summary grid (legacy, если где-то осталось) */
 .contract-summary {
   display: grid;
   gap: var(--space-4);
@@ -606,6 +1112,14 @@ table.data .cell-actions {
   padding: var(--space-5);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--color-border);
+}
+
+.dialog--form {
+  max-width: 28rem;
+}
+
+.dialog--wide {
+  max-width: 36rem;
 }
 
 .dialog__title {

@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { ContractsHistoryPeriodToggle } from '../components/ContractsHistoryPeriodToggle'
+import { SnapshotHistoryTable } from '../components/SnapshotHistoryTable'
 import { useToast } from '../context/ToastContext'
-import { formatDateIso, formatMoney, formatPercent } from '../utils/format'
+import type { SnapshotRow } from '../types/snapshot'
+import { annualRateDecimal, localTodayYmd, projectDebtAfterLastSnapshot } from '../utils/debtProjection'
+import { formatDateIso, formatMoney, formatMoneyRounded, formatPercent } from '../utils/format'
+import type { ContractsHistoryPeriod } from '../utils/contractsHistory'
 
 type Contract = {
   id: number
@@ -12,28 +18,48 @@ type Contract = {
   doc_date: string
   amount: number
   interest_rate: number
+  close_date?: string | null
+  /** Остаток долга (тело + проценты) по последнему снимку; иначе как у API — сумма договора. */
+  total_debt?: number
+  balance_principal?: number
+  balance_interest?: number
+  has_snapshot?: boolean
 }
 
-type Payment = {
+const DEBT_ZERO_EPS = 0.01
+
+function lastSnapshotYmd(snapshots: SnapshotRow[]): string | null {
+  if (!snapshots.length) return null
+  let last = snapshots[0].doc_date.trim().slice(0, 10)
+  for (let i = 1; i < snapshots.length; i++) {
+    const d = snapshots[i].doc_date.trim().slice(0, 10)
+    if (d > last) last = d
+  }
+  return last.length === 10 ? last : null
+}
+
+type Person = {
   id: number
-  contract_id?: number
-  payer_id: number
-  amount: number
-  date: string
-  comment: string
+  first_name: string
+  last_name: string
+  tg_id: number
+  tg_login: string
+  roles?: string[]
 }
 
-function payerRoleLabel(payerId: number, con: Contract | null): string {
-  if (!con) return String(payerId)
-  if (payerId === con.banker_id) return 'Банкир'
-  if (payerId === con.client_id) return 'Клиент'
-  return String(payerId)
+function personLabel(p: { first_name?: string; last_name?: string } | null | undefined): string {
+  if (!p) return '—'
+  const s = [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+  return s || '—'
 }
 
 export function ContractPage() {
   const { id } = useParams<{ id: string }>()
   const contractId = parseInt(id ?? '', 10)
   const toast = useToast()
+  const { role } = useAuth()
+  const isClientViewer = role === 'client'
+  const isBankerViewer = role === 'banker'
 
   const [msg, setMsg] = useState<{ type: 'err'; text: string } | null>(null)
   const showErr = useCallback((e: unknown) => {
@@ -45,43 +71,79 @@ export function ContractPage() {
   }, [])
 
   const [loadingContract, setLoadingContract] = useState(true)
-  const [loadingPayments, setLoadingPayments] = useState(true)
+  const [snapLoading, setSnapLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const [contract, setContract] = useState<Contract | null>(null)
-  const [payments, setPayments] = useState<Payment[] | null>(null)
+  const [snapshots, setSnapshots] = useState<SnapshotRow[] | null>(null)
 
-  const [pf, setPf] = useState('')
-  const [pt, setPt] = useState('')
-  const [payPayer, setPayPayer] = useState('')
+  const [payPayerRole, setPayPayerRole] = useState<'client' | 'banker'>('client')
   const [payAmt, setPayAmt] = useState('')
   const [payDate, setPayDate] = useState('')
   const [payCom, setPayCom] = useState('')
   const [recFrom, setRecFrom] = useState('')
 
-  const [confirmPayment, setConfirmPayment] = useState<number | null>(null)
+  const [newPaymentOpen, setNewPaymentOpen] = useState(false)
+  const newPaymentTitleId = useId()
+  const [histPeriod, setHistPeriod] = useState<ContractsHistoryPeriod>('3m')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const historyPanelId = useId()
+  const historyHeadId = useId()
+
   const [confirmRecalc, setConfirmRecalc] = useState(false)
+  const [confirmClose, setConfirmClose] = useState(false)
+  const [pendingCloseYmd, setPendingCloseYmd] = useState<string | null>(null)
 
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [ePayer, setEpayer] = useState('')
-  const [eAmt, setEamt] = useState('')
-  const [eDate, setEdate] = useState('')
-  const [eCom, setEcom] = useState('')
+  const [persons, setPersons] = useState<Person[] | null>(null)
+  /** Имена по id договора: надёжно для клиента, когда GET /persons недоступен или урезан. */
+  const [partyById, setPartyById] = useState<Record<number, Person>>({})
 
-  const paymentsPath = useCallback(() => {
-    if (!contractId || contractId < 1) return ''
-    if (!pf && !pt) return '/contracts/' + contractId + '/payments'
-    if (pf && pt)
-      return (
-        '/contracts/' +
-        contractId +
-        '/payments?from_date=' +
-        encodeURIComponent(pf) +
-        '&to_date=' +
-        encodeURIComponent(pt)
+  const personById = useMemo(() => {
+    const m = new Map<number, Person>()
+    for (const p of persons ?? []) m.set(p.id, p)
+    return m
+  }, [persons])
+
+  const loadPersons = useCallback(async () => {
+    try {
+      const rows = (await api<Person[]>('GET', '/persons')) ?? []
+      if (Array.isArray(rows)) setPersons(rows)
+    } catch {
+      /* список имён необязателен для карточки */
+    }
+  }, [])
+
+  useEffect(() => {
+    loadPersons().catch(() => {})
+  }, [loadPersons])
+
+  useEffect(() => {
+    if (!contract) return
+    const ids = [...new Set([contract.client_id, contract.banker_id])]
+    let cancelled = false
+    void (async () => {
+      const updates: Record<number, Person> = {}
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const p = await api<Person>('GET', '/persons/' + id)
+            if (p && typeof (p as Person).id === 'number') updates[id] = p as Person
+          } catch {
+            /* нет доступа или нет записи */
+          }
+        }),
       )
-    throw new Error('Укажите оба поля «с» и «по» или очистите оба')
-  }, [contractId, pf, pt])
+      if (!cancelled) setPartyById((prev) => ({ ...prev, ...updates }))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [contract?.id, contract?.client_id, contract?.banker_id])
+
+  const resolveParty = useCallback(
+    (pid: number) => partyById[pid] ?? personById.get(pid),
+    [partyById, personById],
+  )
 
   const loadContract = useCallback(async () => {
     if (!contractId || contractId < 1) return
@@ -90,7 +152,6 @@ export function ContractPage() {
       const c = await api<Contract>('GET', '/contracts/' + contractId)
       if (c) {
         setContract(c)
-        setPayPayer(String(c.client_id))
       }
     } catch (e) {
       showErr(e)
@@ -99,42 +160,35 @@ export function ContractPage() {
     }
   }, [contractId, showErr])
 
-  const loadPayments = useCallback(async () => {
+  const loadSnapshots = useCallback(async () => {
     if (!contractId || contractId < 1) return
-    let path: string
+    setSnapLoading(true)
     try {
-      path = paymentsPath()
-    } catch (e) {
-      showErr(e)
-      return
-    }
-    setLoadingPayments(true)
-    try {
-      const rows = (await api<Payment[]>('GET', path)) ?? []
-      if (!Array.isArray(rows)) {
-        showErr('unexpected payments response')
+      const list = (await api<SnapshotRow[]>('GET', '/contracts/' + contractId + '/snapshots')) ?? []
+      if (!Array.isArray(list)) {
+        showErr('Неожиданный ответ истории остатков')
         return
       }
-      setPayments(rows)
+      setSnapshots(list)
     } catch (e) {
       showErr(e)
     } finally {
-      setLoadingPayments(false)
+      setSnapLoading(false)
     }
-  }, [contractId, paymentsPath, showErr])
+  }, [contractId, showErr])
 
   useEffect(() => {
     if (!contractId || contractId < 1) return
     loadContract().catch(() => {})
-    loadPayments().catch(() => {})
-  }, [contractId, loadContract, loadPayments])
-
-  const onLoadPaymentsClick = () => {
-    loadPayments().catch(showErr)
-  }
+    loadSnapshots().catch(() => {})
+  }, [contractId, loadContract, loadSnapshots])
 
   const onAddPayment = async () => {
-    const payer_id = parseInt(payPayer, 10)
+    if (!contract) {
+      showErr(new Error('Договор не загружен'))
+      return
+    }
+    const payer_id = payPayerRole === 'client' ? contract.client_id : contract.banker_id
     const amount = parseFloat(payAmt)
     const date = payDate
     const comment = payCom.trim()
@@ -148,7 +202,12 @@ export function ContractPage() {
         comment,
       })
       toast.show('Платёж создан')
-      await loadPayments()
+      setNewPaymentOpen(false)
+      setPayAmt('')
+      setPayDate('')
+      setPayCom('')
+      await loadContract()
+      await loadSnapshots()
     } catch (e) {
       showErr(e)
     } finally {
@@ -156,69 +215,28 @@ export function ContractPage() {
     }
   }
 
-  const onDeletePayment = async (pid: number) => {
-    setSubmitting(true)
-    try {
-      await api('DELETE', '/payments/' + pid)
-      toast.show('Платёж удалён')
-      if (editingId === pid) setEditingId(null)
-      await loadPayments()
-    } catch (e) {
-      showErr(e)
-    } finally {
-      setSubmitting(false)
-      setConfirmPayment(null)
-    }
+  const onNewPaymentClick = () => {
+    setNewPaymentOpen(true)
   }
 
-  const beginEdit = (p: Payment) => {
-    const iso = p.date.trim().slice(0, 10)
-    setEditingId(p.id)
-    setEpayer(String(p.payer_id))
-    setEamt(String(p.amount))
-    setEdate(iso)
-    setEcom(p.comment ?? '')
-  }
+  useEffect(() => {
+    if (!newPaymentOpen) return
+    const t = window.setTimeout(() => document.getElementById('pay-amt')?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [newPaymentOpen])
 
-  const cancelEdit = () => {
-    setEditingId(null)
-  }
+  useEffect(() => {
+    if (newPaymentOpen && isClientViewer) setPayPayerRole('client')
+  }, [newPaymentOpen, isClientViewer])
 
-  const onSaveEdit = async () => {
-    if (editingId === null) return
-    const payer_id = parseInt(ePayer, 10)
-    const amount = parseFloat(eAmt)
-    const date = eDate
-    const comment = eCom.trim()
-    if (!date || date.length !== 10) {
-      showErr(new Error('Укажите дату в формате ГГГГ-ММ-ДД'))
-      return
+  useEffect(() => {
+    if (!newPaymentOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) setNewPaymentOpen(false)
     }
-    if (!Number.isFinite(payer_id) || payer_id < 1) {
-      showErr(new Error('Укажите корректный ID плательщика'))
-      return
-    }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      showErr(new Error('Сумма должна быть больше нуля'))
-      return
-    }
-    setSubmitting(true)
-    try {
-      await api('PATCH', '/payments/' + editingId, {
-        payer_id,
-        amount,
-        date,
-        comment,
-      })
-      toast.show('Платёж обновлён')
-      setEditingId(null)
-      await loadPayments()
-    } catch (e) {
-      showErr(e)
-    } finally {
-      setSubmitting(false)
-    }
-  }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [newPaymentOpen, submitting])
 
   const onRecalc = async () => {
     const from_date = recFrom
@@ -230,11 +248,91 @@ export function ContractPage() {
     try {
       await api('POST', '/contracts/' + contractId + '/recalculate', { from_date })
       toast.show('Пересчёт выполнен')
+      await loadContract()
+      await loadSnapshots()
     } catch (e) {
       showErr(e)
     } finally {
       setSubmitting(false)
       setConfirmRecalc(false)
+    }
+  }
+
+  const cardDebt = useMemo(() => {
+    if (!contract) return null
+    const todayYmd = localTodayYmd()
+    if (snapshots && snapshots.length > 0) {
+      const last = [...snapshots].reduce((a, b) => (a.doc_date >= b.doc_date ? a : b))
+      const p = projectDebtAfterLastSnapshot({
+        principal: last.principal,
+        interestBalance: last.interest,
+        annualRateDecimal: annualRateDecimal(contract.interest_rate),
+        lastSnapshotYmd: last.doc_date.trim().slice(0, 10),
+        endYmd: todayYmd,
+      })
+      return {
+        kind: 'projected' as const,
+        total: p.total,
+        principal: p.principal,
+        interest: p.interest,
+        extraInterest: p.extraInterest,
+        accrualDays: p.accrualDays,
+        lastSnapshotYmd: last.doc_date.trim().slice(0, 10),
+      }
+    }
+    return {
+      kind: 'api' as const,
+      total: contract.total_debt ?? contract.amount,
+      hasSnapshot: contract.has_snapshot === true,
+      principal: contract.balance_principal,
+      interest: contract.balance_interest,
+      snapshotsPending: snapLoading && snapshots === null,
+    }
+  }, [contract, snapshots, snapLoading])
+
+  const debtIsZero = useMemo(() => {
+    if (!contract) return false
+    const t = cardDebt?.total ?? contract.total_debt ?? contract.amount
+    return Math.abs(t) < DEBT_ZERO_EPS
+  }, [contract, cardDebt])
+
+  const onCloseContractPrepare = () => {
+    if (!contract) return
+    if (contract.close_date) {
+      showErr(new Error('Договор уже закрыт.'))
+      return
+    }
+    if (!debtIsZero) {
+      showErr(new Error('Закрыть можно только при нулевом остатке долга.'))
+      return
+    }
+    if (!snapshots?.length) {
+      showErr(new Error('Нет снимков — сначала дождитесь загрузки истории или нажмите «Обновить историю».'))
+      return
+    }
+    const closeYmd = lastSnapshotYmd(snapshots)
+    if (!closeYmd) {
+      showErr(new Error('Не удалось определить дату последнего снимка.'))
+      return
+    }
+    setPendingCloseYmd(closeYmd)
+    setConfirmClose(true)
+  }
+
+  const onCloseContractConfirm = async () => {
+    if (!pendingCloseYmd) return
+    setSubmitting(true)
+    try {
+      await api('PATCH', '/contracts/' + contractId, { close_date: pendingCloseYmd })
+      toast.show('Договор закрыт')
+      setConfirmClose(false)
+      setPendingCloseYmd(null)
+      await loadContract()
+      await loadSnapshots()
+    } catch (e) {
+      showErr(e)
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -251,7 +349,10 @@ export function ContractPage() {
     )
   }
 
-  const busy = loadingContract || loadingPayments
+  const contractPageTitle =
+    contract != null
+      ? `Договор №${contractId} от ${formatDateIso(contract.doc_date)}`
+      : `Договор №${contractId}`
 
   return (
     <>
@@ -260,11 +361,15 @@ export function ContractPage() {
         <span className="breadcrumbs__sep" aria-hidden>
           /
         </span>
-        <span aria-current="page">Договор #{contractId}</span>
+        <span aria-current="page">{contractPageTitle}</span>
       </nav>
 
-      <h1 className="page-title">Договор #{contractId}</h1>
-      <p className="page-intro">Платежи и пересчёт снимков по договору.</p>
+      <h1 className="page-title">{contractPageTitle}</h1>
+      {!isClientViewer && (
+        <p className="page-intro">
+          История остатков по снимкам и пересчёт; новый платёж — из карточки договора.
+        </p>
+      )}
 
       {msg?.type === 'err' && (
         <div className="alert alert--error alert--persistent" role="alert">
@@ -276,330 +381,391 @@ export function ContractPage() {
             <button
               type="button"
               className="btn btn--secondary btn--sm"
-              onClick={() => loadPayments().catch(showErr)}
+              onClick={() => loadSnapshots().catch(showErr)}
             >
-              Обновить платежи
+              Обновить историю
             </button>
           </div>
         </div>
       )}
 
-      <section className="card" aria-busy={loadingContract}>
-        <h2 className="card__title">Карточка договора</h2>
+      <section className="card contract-card" aria-busy={loadingContract}>
+        <div className="contract-card__head">
+          <h2 className="card__title">Карточка договора</h2>
+          {contract && !isClientViewer && (
+            <button
+              type="button"
+              className="btn btn--primary btn--sm"
+              onClick={onNewPaymentClick}
+              disabled={loadingContract || submitting || !!contract.close_date}
+            >
+              Новый платёж
+            </button>
+          )}
+        </div>
         {loadingContract && !contract ? (
           <div className="loading-inline" style={{ minHeight: '6rem' }}>
             <span className="spinner spinner--lg" aria-hidden />
             <span>Загрузка…</span>
           </div>
         ) : contract ? (
-          <div className="contract-summary">
-            <div className="stat">
-              <p className="stat__label">Клиент</p>
-              <p className="stat__value font-mono tabular-nums">{contract.client_id}</p>
-            </div>
-            <div className="stat">
-              <p className="stat__label">Банкир</p>
-              <p className="stat__value font-mono tabular-nums">{contract.banker_id}</p>
-            </div>
-            <div className="stat">
-              <p className="stat__label">Дата документа</p>
-              <p className="stat__value" style={{ fontSize: 'var(--text-lg)' }}>
-                {formatDateIso(contract.doc_date)}
-              </p>
-            </div>
-            <div className="stat stat--highlight">
-              <p className="stat__label">Сумма</p>
-              <p className="stat__value">{formatMoney(contract.amount)}</p>
-            </div>
-            <div className="stat stat--highlight">
-              <p className="stat__label">Ставка</p>
-              <p className="stat__value">{formatPercent(contract.interest_rate)}</p>
-            </div>
-          </div>
+          <>
+            <dl className="contract-spec">
+              {!isClientViewer && (
+                <div className="contract-spec__row">
+                  <dt>Клиент</dt>
+                  <dd>
+                    <span className="contract-spec__value">{personLabel(resolveParty(contract.client_id))}</span>
+                  </dd>
+                </div>
+              )}
+              {!isBankerViewer && (
+                <div className="contract-spec__row">
+                  <dt>Банкир</dt>
+                  <dd>
+                    <span className="contract-spec__value">{personLabel(resolveParty(contract.banker_id))}</span>
+                  </dd>
+                </div>
+              )}
+              {contract.close_date && (
+                <div className="contract-spec__row">
+                  <dt>Закрыт</dt>
+                  <dd>
+                    <span className="contract-spec__value">{formatDateIso(contract.close_date)}</span>
+                  </dd>
+                </div>
+              )}
+              <div className="contract-spec__row">
+                <dt>Процентная ставка</dt>
+                <dd>
+                  <span className="contract-spec__value">{formatPercent(contract.interest_rate)}</span>
+                </dd>
+              </div>
+              <div className="contract-spec__row contract-spec__row--debt">
+                <dt>Текущая сумма долга</dt>
+                <dd>
+                  <span className="contract-spec__value contract-spec__value--amount">
+                    {formatMoneyRounded(cardDebt?.total ?? (contract.total_debt ?? contract.amount))}
+                  </span>
+                  {cardDebt?.kind === 'api' && contract.has_snapshot === false && (
+                    <p className="field-hint contract-spec__hint">
+                      Снимков начислений ещё нет — показана сумма по договору (тело).
+                    </p>
+                  )}
+                  {cardDebt?.kind === 'api' &&
+                    cardDebt.snapshotsPending &&
+                    contract.has_snapshot === true &&
+                    contract.balance_principal != null &&
+                    contract.balance_interest != null && (
+                      <p className="field-hint contract-spec__hint">
+                        Тело {formatMoneyRounded(contract.balance_principal)} + проценты{' '}
+                        {formatMoneyRounded(contract.balance_interest)} (по
+                        данным API; после загрузки снимков — оценка до сегодня).
+                      </p>
+                    )}
+                  {cardDebt?.kind === 'api' &&
+                    !cardDebt.snapshotsPending &&
+                    contract.has_snapshot === true &&
+                    contract.balance_principal != null &&
+                    contract.balance_interest != null && (
+                      <p className="field-hint contract-spec__hint">
+                        Тело {formatMoneyRounded(contract.balance_principal)} + проценты{' '}
+                        {formatMoneyRounded(contract.balance_interest)}
+                      </p>
+                    )}
+                  {cardDebt?.kind === 'projected' && (
+                    <p className="field-hint contract-spec__hint">
+                      Тело {formatMoneyRounded(cardDebt.principal)} + проценты {formatMoneyRounded(cardDebt.interest)}.
+                      {cardDebt.accrualDays > 0 ? (
+                        <>
+                          {' '}
+                          К процентам по последнему снимку ({formatDateIso(cardDebt.lastSnapshotYmd)}) добавлено доначисление
+                          на тело {formatMoney(cardDebt.extraInterest)} за {cardDebt.accrualDays} календ. дн. до сегодня (
+                          {formatPercent(annualRateDecimal(contract.interest_rate))} годовых, ACT/365).
+                        </>
+                      ) : (
+                        <> По последнему снимку на {formatDateIso(cardDebt.lastSnapshotYmd)} доначислений до сегодня нет.</>
+                      )}
+                    </p>
+                  )}
+                </dd>
+              </div>
+            </dl>
+
+            {!isClientViewer && (
+              <div className="contract-card__recalc">
+                <div className="contract-recalc-row">
+                  <label className="field-label contract-recalc-row__label" htmlFor="rec-from">
+                    Пересчитать с даты
+                  </label>
+                  <input
+                    id="rec-from"
+                    className="input contract-recalc-row__date"
+                    type="date"
+                    value={recFrom}
+                    onChange={(e) => setRecFrom(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--danger contract-recalc-row__btn"
+                    onClick={() => {
+                      if (!recFrom) {
+                        showErr(new Error('Укажите дату начала пересчёта'))
+                        return
+                      }
+                      setConfirmRecalc(true)
+                    }}
+                    disabled={submitting || !!contract.close_date}
+                  >
+                    Пересчитать
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--secondary contract-recalc-row__btn"
+                    onClick={onCloseContractPrepare}
+                    disabled={
+                      submitting ||
+                      !!contract.close_date ||
+                      !debtIsZero ||
+                      loadingContract ||
+                      snapLoading ||
+                      !snapshots?.length
+                    }
+                    title={
+                      contract.close_date
+                        ? 'Договор уже закрыт'
+                        : !debtIsZero
+                          ? 'Остаток долга должен быть нулевым'
+                          : !snapshots?.length
+                            ? 'Нужна загруженная история снимков'
+                            : 'Закрыть договор: дата закрытия = дата последнего снимка'
+                    }
+                  >
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : null}
       </section>
 
-      <section className="card" aria-busy={loadingPayments}>
-        <h2 className="card__title">Платежи</h2>
-
-        <div className="panel">
-          <h3 className="section-title">Период отбора</h3>
-          <p className="field-hint">Заполните оба поля или ни одного — иначе запрос к API будет отклонён.</p>
-          <div className="field-row field-row--filters" style={{ marginBottom: '1rem' }}>
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-from">
-                С даты
-              </label>
-              <input id="pay-from" className="input" type="date" value={pf} onChange={(e) => setPf(e.target.value)} />
+      <section className="card" aria-busy={snapLoading}>
+        <div className="toolbar contract-history-toolbar">
+          <button
+            type="button"
+            id={historyHeadId}
+            className="contract-history-toggle"
+            aria-expanded={historyOpen}
+            aria-controls={historyPanelId}
+            onClick={() => setHistoryOpen((o) => !o)}
+          >
+            <h2 className="card__title contract-history-toggle__title">История остатков</h2>
+            <span className="contract-history-toggle__chevron" aria-hidden>
+              {historyOpen ? '▼' : '▶'}
+            </span>
+          </button>
+          {historyOpen && (
+            <div className="contract-history-toolbar__actions">
+              <ContractsHistoryPeriodToggle value={histPeriod} onChange={setHistPeriod} />
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => loadSnapshots().catch(showErr)}
+                disabled={snapLoading || loadingContract}
+              >
+                {snapLoading ? (
+                  <span className="loading-inline">
+                    <span className="spinner" aria-hidden />
+                    Загрузка…
+                  </span>
+                ) : (
+                  'Обновить историю'
+                )}
+              </button>
             </div>
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-to">
-                По дату
-              </label>
-              <input id="pay-to" className="input" type="date" value={pt} onChange={(e) => setPt(e.target.value)} />
-            </div>
-          </div>
-          <div className="toolbar">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={onLoadPaymentsClick}
-              disabled={busy || submitting}
-            >
-              {loadingPayments ? (
-                <span className="loading-inline">
-                  <span className="spinner" aria-hidden />
-                  Загрузка…
-                </span>
-              ) : (
-                'Загрузить платежи'
-              )}
-            </button>
-          </div>
+          )}
         </div>
-
-        {loadingPayments && payments === null ? (
-          <div className="skeleton" style={{ width: '100%', height: '8rem', marginTop: '1rem' }} aria-hidden />
-        ) : payments?.length === 0 ? (
-          <div className="empty-state" style={{ marginTop: '1rem' }}>
-            <div className="empty-state__icon" aria-hidden>
-              💳
-            </div>
-            <p className="empty-state__title">Нет платежей</p>
-            <p className="empty-state__text">Добавьте платёж ниже или смените период отбора.</p>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th scope="col">ID</th>
-                  <th scope="col" className="num">
-                    Плательщик
-                  </th>
-                  <th scope="col" className="num">
-                    Сумма
-                  </th>
-                  <th scope="col">Дата</th>
-                  <th scope="col">Комментарий</th>
-                  <th scope="col" className="cell-actions">
-                    Действия
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(payments ?? []).map((r) => (
-                  <tr key={r.id} className={editingId === r.id ? 'is-editing' : undefined}>
-                    <td className="font-mono tabular-nums">{r.id}</td>
-                    <td>{payerRoleLabel(r.payer_id, contract)}</td>
-                    <td className="num">{formatMoney(r.amount)}</td>
-                    <td>{formatDateIso(r.date)}</td>
-                    <td>{r.comment}</td>
-                    <td className="cell-actions">
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        onClick={() => beginEdit(r)}
-                        disabled={submitting}
-                      >
-                        Изменить
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => setConfirmPayment(r.id)}
-                        disabled={submitting}
-                      >
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {historyOpen && (
+          <div
+            id={historyPanelId}
+            role="region"
+            aria-labelledby={historyHeadId}
+            style={{ marginTop: 'var(--space-3)' }}
+          >
+            {snapLoading && snapshots === null ? (
+              <div className="loading-inline" style={{ minHeight: '4rem' }}>
+                <span className="spinner spinner--lg" aria-hidden />
+                <span>Загрузка…</span>
+              </div>
+            ) : snapshots && snapshots.length === 0 ? (
+              <p className="field-hint">Нет снимков.</p>
+            ) : contract ? (
+              <SnapshotHistoryTable
+                contractDocYmd={contract.doc_date.trim().slice(0, 10)}
+                snapshots={snapshots}
+                period={histPeriod}
+                onPeriodChange={setHistPeriod}
+                showPeriodToggle={false}
+              />
+            ) : (
+              <p className="field-hint">Загрузите карточку договора.</p>
+            )}
           </div>
         )}
+      </section>
 
-        {editingId !== null && (
-          <div className="card" style={{ marginTop: 'var(--space-5)' }}>
-            <h3 className="section-title">Редактирование платежа #{editingId}</h3>
-            <p className="field-hint">Изменения отправляются на сервер (PATCH). Дата — в формате для API (поле ниже использует календарь).</p>
+      {newPaymentOpen && (
+        <div
+          className="dialog-backdrop"
+          role="presentation"
+          onMouseDown={() => {
+            if (!submitting) setNewPaymentOpen(false)
+          }}
+        >
+          <div
+            className="dialog dialog--form"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={newPaymentTitleId}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <h2 id={newPaymentTitleId} className="dialog__title">
+              Новый платёж
+            </h2>
             <div className="field-grid">
               <div className="field-row">
-                <label className="field-label" htmlFor="edit-payer">
-                  ID плательщика
-                </label>
-                <input
-                  id="edit-payer"
-                  className="input"
-                  type="number"
-                  min={1}
-                  value={ePayer}
-                  onChange={(e) => setEpayer(e.target.value)}
-                />
+                <span className="field-label" id="pay-payer-label">
+                  Плательщик
+                </span>
+                {isClientViewer ? (
+                  <p className="field-hint" style={{ marginTop: 0, marginBottom: 0 }}>
+                    Учитывается как платёж с вашей стороны (уменьшение долга).
+                  </p>
+                ) : (
+                  <>
+                    <div
+                      className="payment-payer-toggle"
+                      role="radiogroup"
+                      aria-labelledby="pay-payer-label"
+                    >
+                      <button
+                        type="button"
+                        className={
+                          'payment-payer-toggle__btn' +
+                          (payPayerRole === 'client' ? ' payment-payer-toggle__btn--active' : '')
+                        }
+                        role="radio"
+                        aria-checked={payPayerRole === 'client'}
+                        onClick={() => setPayPayerRole('client')}
+                      >
+                        <span className="payment-payer-toggle__sign" aria-hidden>
+                          −
+                        </span>
+                        <span className="payment-payer-toggle__main">Клиент</span>
+                        <span className="payment-payer-toggle__sub">возврат</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={
+                          'payment-payer-toggle__btn' +
+                          (payPayerRole === 'banker' ? ' payment-payer-toggle__btn--active' : '')
+                        }
+                        role="radio"
+                        aria-checked={payPayerRole === 'banker'}
+                        onClick={() => setPayPayerRole('banker')}
+                      >
+                        <span className="payment-payer-toggle__sign" aria-hidden>
+                          +
+                        </span>
+                        <span className="payment-payer-toggle__main">Банкир</span>
+                        <span className="payment-payer-toggle__sub">зачисление</span>
+                      </button>
+                    </div>
+                    <p className="field-hint" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
+                      «−» — платёж клиента (уменьшение долга), «+» — ввод средств банкира на договор.
+                    </p>
+                  </>
+                )}
               </div>
               <div className="field-row">
-                <label className="field-label" htmlFor="edit-amt">
+                <label className="field-label" htmlFor="pay-amt">
                   Сумма
                 </label>
                 <input
-                  id="edit-amt"
+                  id="pay-amt"
                   className="input"
                   type="number"
                   step="any"
                   min={0}
-                  value={eAmt}
-                  onChange={(e) => setEamt(e.target.value)}
+                  value={payAmt}
+                  onChange={(e) => setPayAmt(e.target.value)}
                 />
               </div>
               <div className="field-row">
-                <label className="field-label" htmlFor="edit-date">
+                <label className="field-label" htmlFor="pay-date">
                   Дата
                 </label>
-                <input id="edit-date" className="input" type="date" value={eDate} onChange={(e) => setEdate(e.target.value)} />
+                <input id="pay-date" className="input" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
               </div>
               <div className="field-row">
-                <label className="field-label" htmlFor="edit-com">
+                <label className="field-label" htmlFor="pay-com">
                   Комментарий
                 </label>
-                <input id="edit-com" className="input" value={eCom} onChange={(e) => setEcom(e.target.value)} />
-              </div>
-              <div className="field-row field-row--inline">
-                <button type="button" className="btn btn--primary" onClick={() => onSaveEdit()} disabled={submitting}>
-                  {submitting ? 'Сохранение…' : 'Сохранить'}
-                </button>
-                <button type="button" className="btn btn--secondary" onClick={cancelEdit} disabled={submitting}>
-                  Отмена
-                </button>
+                <input id="pay-com" className="input" value={payCom} onChange={(e) => setPayCom(e.target.value)} />
               </div>
             </div>
-          </div>
-        )}
-
-        <div className="panel" style={{ marginTop: 'var(--space-6)' }}>
-          <h3 className="section-title">Новый платёж</h3>
-          <div className="field-grid">
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-payer">
-                ID плательщика
-              </label>
-              <input
-                id="pay-payer"
-                className="input"
-                type="number"
-                min={1}
-                value={payPayer}
-                onChange={(e) => setPayPayer(e.target.value)}
-              />
-            </div>
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-amt">
-                Сумма
-              </label>
-              <input
-                id="pay-amt"
-                className="input"
-                type="number"
-                step="any"
-                min={0}
-                value={payAmt}
-                onChange={(e) => setPayAmt(e.target.value)}
-              />
-            </div>
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-date">
-                Дата
-              </label>
-              <input id="pay-date" className="input" type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
-            </div>
-            <div className="field-row">
-              <label className="field-label" htmlFor="pay-com">
-                Комментарий
-              </label>
-              <input id="pay-com" className="input" value={payCom} onChange={(e) => setPayCom(e.target.value)} />
-            </div>
-            <div>
+            <div className="dialog__actions" style={{ marginTop: 'var(--space-4)' }}>
               <button
                 type="button"
-                className="btn btn--primary"
-                onClick={() => onAddPayment()}
+                className="btn btn--secondary"
+                onClick={() => setNewPaymentOpen(false)}
                 disabled={submitting}
               >
+                Отмена
+              </button>
+              <button type="button" className="btn btn--primary" onClick={() => onAddPayment()} disabled={submitting}>
                 {submitting ? 'Сохранение…' : 'Добавить платёж'}
               </button>
             </div>
           </div>
         </div>
-      </section>
+      )}
 
-      <section className="card danger-zone">
-        <h2 className="card__title">Пересчёт снимков</h2>
-        <p className="field-hint">
-          Снимки с датой документа не раньше указанной даты по этому договору будут удалены и пересобраны. Операция
-          необратима при потере данных в снимках — убедитесь в дате.
-        </p>
-        <div className="field-grid" style={{ maxWidth: '20rem' }}>
-          <div className="field-row">
-            <label className="field-label" htmlFor="rec-from">
-              Пересчитать с даты
-            </label>
-            <input
-              id="rec-from"
-              className="input"
-              type="date"
-              value={recFrom}
-              onChange={(e) => setRecFrom(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <button
-              type="button"
-              className="btn btn--danger"
-              onClick={() => {
-                if (!recFrom) {
-                  showErr(new Error('Укажите дату начала пересчёта'))
-                  return
-                }
-                setConfirmRecalc(true)
-              }}
-              disabled={submitting}
-            >
-              Пересчитать
-            </button>
-          </div>
-        </div>
-      </section>
+      {!isClientViewer && (
+        <ConfirmDialog
+          open={confirmRecalc}
+          title="Запустить пересчёт?"
+          message={
+            recFrom
+              ? `Будут пересобраны снимки с даты ${formatDateIso(recFrom)} (включительно по правилам договора). Продолжить?`
+              : ''
+          }
+          confirmLabel="Пересчитать"
+          danger
+          onCancel={() => setConfirmRecalc(false)}
+          onConfirm={() => {
+            void onRecalc()
+          }}
+        />
+      )}
 
       <ConfirmDialog
-        open={confirmPayment !== null}
-        title="Удалить платёж?"
+        open={confirmClose}
+        title="Закрыть договор?"
         message={
-          confirmPayment !== null
-            ? `Платёж ${confirmPayment} будет удалён без восстановления.`
+          pendingCloseYmd
+            ? `Будет установлена дата закрытия ${formatDateIso(pendingCloseYmd)} (по последнему снимку). Продолжить?`
             : ''
         }
-        confirmLabel="Удалить"
+        confirmLabel="Закрыть"
         danger
-        onCancel={() => setConfirmPayment(null)}
-        onConfirm={() => {
-          if (confirmPayment !== null) void onDeletePayment(confirmPayment)
+        onCancel={() => {
+          setConfirmClose(false)
+          setPendingCloseYmd(null)
         }}
-      />
-
-      <ConfirmDialog
-        open={confirmRecalc}
-        title="Запустить пересчёт?"
-        message={
-          recFrom
-            ? `Будут пересобраны снимки с даты ${formatDateIso(recFrom)} (включительно по правилам договора). Продолжить?`
-            : ''
-        }
-        confirmLabel="Пересчитать"
-        danger
-        onCancel={() => setConfirmRecalc(false)}
         onConfirm={() => {
-          void onRecalc()
+          void onCloseContractConfirm()
         }}
       />
     </>

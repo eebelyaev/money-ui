@@ -94,28 +94,6 @@ button:focus-visible {
   border-radius: var(--radius-sm);
 }
 
-.skip-link {
-  position: absolute;
-  left: var(--space-4);
-  top: var(--space-4);
-  z-index: 300;
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
-  font-weight: 600;
-  font-size: var(--text-sm);
-  border-radius: var(--radius-sm);
-  text-decoration: none;
-  transform: translateY(-120%);
-  transition: transform 0.15s ease;
-}
-
-.skip-link:focus {
-  transform: translateY(0);
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
 .sr-only {
   position: absolute;
   width: 1px;
