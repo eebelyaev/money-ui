@@ -12,10 +12,10 @@ function personLabel(p: { first_name?: string; last_name?: string }): string {
   return s || '—'
 }
 
-/** Подпись в списках: ФИО и id для однозначности. */
-function personSelectLabel(p: AdminPerson): string {
+/** Подпись в выпадающих списках — только имя, без id. */
+function personOptionLabel(p: AdminPerson): string {
   const name = personLabel(p)
-  return name === '—' ? `Участник · id ${p.id}` : `${name} · id ${p.id}`
+  return name === '—' ? 'Без имени' : name
 }
 
 type Props = {
@@ -33,8 +33,8 @@ export function AdminContractsTab({ showErr }: Props) {
 
   /** Пустая строка — все договоры; иначе id участника (банкир или клиент). */
   const [fPersonId, setFPersonId] = useState('')
-  /** '' = все; open / closed — см. query `status` в API. */
-  const [fStatus, setFStatus] = useState<'open' | 'closed' | ''>('')
+  /** true — в запросе status=open; false — все договоры. */
+  const [fOnlyOpen, setFOnlyOpen] = useState(true)
 
   const [showContractForm, setShowContractForm] = useState(false)
   const [cClient, setCClient] = useState('')
@@ -66,10 +66,10 @@ export function AdminContractsTab({ showErr }: Props) {
     const q = new URLSearchParams()
     const p = fPersonId.trim()
     if (p) q.set('person', p)
-    if (fStatus === 'open' || fStatus === 'closed') q.set('status', fStatus)
+    if (fOnlyOpen) q.set('status', 'open')
     const s = q.toString()
     return s ? '?' + s : ''
-  }, [fPersonId, fStatus])
+  }, [fPersonId, fOnlyOpen])
 
   const loadContracts = useCallback(async () => {
     const q = contractQuery()
@@ -213,20 +213,51 @@ export function AdminContractsTab({ showErr }: Props) {
 
   return (
     <>
-      <div className="toolbar">
-        <button type="button" className="btn btn--primary" onClick={() => setShowContractForm(true)} disabled={loading}>
-          Новый договор
-        </button>
-        <button type="button" className="btn btn--secondary" onClick={() => loadContracts()} disabled={loading}>
-          {loading ? (
-            <span className="loading-inline">
-              <span className="spinner" aria-hidden />
-              Обновление…
-            </span>
-          ) : (
-            'Обновить список'
-          )}
-        </button>
+      <div className="toolbar toolbar--admin-contracts">
+        <div className="toolbar__btns">
+          <button type="button" className="btn btn--primary" onClick={() => setShowContractForm(true)} disabled={loading}>
+            Новый договор
+          </button>
+          <button type="button" className="btn btn--secondary" onClick={() => loadContracts()} disabled={loading}>
+            {loading ? (
+              <span className="loading-inline">
+                <span className="spinner" aria-hidden />
+                Обновление…
+              </span>
+            ) : (
+              'Обновить список'
+            )}
+          </button>
+        </div>
+        <div className="toolbar__filters">
+          <div className="field-row field-row--filter-inline">
+            <select
+              id="adm-f-person"
+              className="input input--toolbar-filter"
+              aria-label="Фильтр по участнику"
+              value={fPersonId}
+              onChange={(e) => setFPersonId(e.target.value)}
+            >
+              <option value="">Все договоры</option>
+              {sortById(persons ?? []).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {personOptionLabel(p)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field-row field-row--filter-inline">
+            <label className="field-label toolbar-filter-checkbox" htmlFor="adm-f-open-only">
+              <input
+                id="adm-f-open-only"
+                type="checkbox"
+                checked={fOnlyOpen}
+                onChange={(e) => setFOnlyOpen(e.target.checked)}
+              />
+              Только открытые
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className={showContractForm ? 'card' : 'hidden'}>
@@ -246,7 +277,7 @@ export function AdminContractsTab({ showErr }: Props) {
               <option value="">Выберите клиента</option>
               {sortById(persons ?? []).map((p) => (
                   <option key={p.id} value={String(p.id)}>
-                    {personLabel(p)}
+                    {personOptionLabel(p)}
                   </option>
                 ))}
             </select>
@@ -304,45 +335,6 @@ export function AdminContractsTab({ showErr }: Props) {
               Отмена
             </button>
           </div>
-        </div>
-      </div>
-
-      <p className="field-hint">
-        Участник — все договоры, где он банкир или клиент. Без выбора — полный список. Закрытость — дополнительный отбор.
-      </p>
-      <div className="field-row field-row--filters" style={{ marginBottom: '1rem' }}>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-f-person">
-            Участник
-          </label>
-          <select
-            id="adm-f-person"
-            className="input"
-            value={fPersonId}
-            onChange={(e) => setFPersonId(e.target.value)}
-          >
-            <option value="">Все договоры</option>
-            {sortById(persons ?? []).map((p) => (
-              <option key={p.id} value={String(p.id)}>
-                {personSelectLabel(p)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-f-status">
-            Закрытость
-          </label>
-          <select
-            id="adm-f-status"
-            className="input"
-            value={fStatus}
-            onChange={(e) => setFStatus(e.target.value as '' | 'open' | 'closed')}
-          >
-            <option value="">Все</option>
-            <option value="open">Только открытые</option>
-            <option value="closed">Только закрытые</option>
-          </select>
         </div>
       </div>
 

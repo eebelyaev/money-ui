@@ -34,14 +34,15 @@ export function AppLayout() {
               Администрирование
             </Link>
           )}
-          {role && personId && (
+          {role && personId ? (
             <button type="button" className="shell__nav-link shell__nav-link--action" onClick={() => logout()}>
               Выйти
             </button>
+          ) : (
+            <Link to="/login" className="shell__nav-link">
+              Вход
+            </Link>
           )}
-          <Link to="/login" className="shell__nav-link">
-            Вход
-          </Link>
         </nav>
       </header>
 

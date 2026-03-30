@@ -46,6 +46,9 @@
   --text-xl: 1.35rem;
   --text-2xl: 1.65rem;
 
+  /** Единая высота полей ввода и select (с учётом border-box) */
+  --control-height: 2.5rem;
+
   --focus-ring: 0 0 0 3px rgba(30, 77, 140, 0.35);
 }
 

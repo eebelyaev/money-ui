@@ -253,6 +253,69 @@ button.shell__nav-link--action {
   margin-bottom: var(--space-4);
 }
 
+.toolbar--admin-contracts {
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.toolbar--admin-contracts .toolbar__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.toolbar--admin-contracts .toolbar__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.field-row--filter-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  width: auto;
+}
+
+.field-row--filter-inline .field-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.input--toolbar-filter {
+  width: auto;
+  min-width: 12rem;
+  max-width: 20rem;
+}
+
+.toolbar__filters--admin-payments > .field-row--pay-filter {
+  flex: 1 1 11rem;
+  min-width: 11rem;
+  max-width: 16rem;
+}
+
+.toolbar__filters--admin-payments > .field-row--pay-filter .input[type='date'],
+.toolbar__filters--admin-payments > .field-row--pay-filter select.input {
+  width: 100%;
+  min-width: 0;
+}
+
+.toolbar-filter-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.toolbar-filter-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
 /* Alerts / inline messages */
 .alert {
   padding: var(--space-3) var(--space-4);
@@ -341,14 +404,6 @@ button.shell__nav-link--action {
   gap: var(--space-3);
 }
 
-@media (min-width: 640px) {
-  .field-row--filters {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
-    align-items: end;
-  }
-}
-
 .field-label {
   font-size: var(--text-sm);
   font-weight: 500;
@@ -397,14 +452,17 @@ button.shell__nav-link--action {
 
 .input,
 select.input {
+  box-sizing: border-box;
   font: inherit;
   font-size: var(--text-sm);
+  line-height: 1.25;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text);
-  min-height: 2.5rem;
+  height: var(--control-height);
+  min-height: var(--control-height);
   width: 100%;
   max-width: 100%;
 }

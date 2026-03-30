@@ -59,7 +59,7 @@ export function ContractPage() {
   const toast = useToast()
   const { role } = useAuth()
   const isClientViewer = role === 'client'
-  const isBankerViewer = role === 'banker'
+  const isBankerViewer = role === 'banker' || role === 'admin'
 
   const [msg, setMsg] = useState<{ type: 'err'; text: string } | null>(null)
   const showErr = useCallback((e: unknown) => {
@@ -244,6 +244,7 @@ export function ContractPage() {
       showErr(new Error('Укажите дату начала пересчёта'))
       return
     }
+    setMsg(null)
     setSubmitting(true)
     try {
       await api('POST', '/contracts/' + contractId + '/recalculate', { from_date })
@@ -513,6 +514,7 @@ export function ContractPage() {
                         showErr(new Error('Укажите дату начала пересчёта'))
                         return
                       }
+                      setMsg(null)
                       setConfirmRecalc(true)
                     }}
                     disabled={submitting || !!contract.close_date}

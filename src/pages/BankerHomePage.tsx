@@ -56,9 +56,11 @@ export function BankerHomePage() {
     }
   }, [])
 
+  const canUseBankerHome = role === 'banker' || role === 'admin'
+
   useEffect(() => {
-    if (role === 'banker' && personId) loadClients().catch(() => {})
-  }, [role, personId, loadClients])
+    if (canUseBankerHome && personId) loadClients().catch(() => {})
+  }, [canUseBankerHome, personId, loadClients])
 
   const fetchOpenContracts = async (clientId: number) => {
     setLoadingContracts(true)
@@ -118,10 +120,10 @@ export function BankerHomePage() {
     void fetchSnapshots(contractId)
   }
 
-  if (role !== 'banker' || !personId) {
+  if (!canUseBankerHome || !personId) {
     return (
       <p className="alert alert--error">
-        Нужна роль банкира. <Link to="/login">Войти</Link>
+        Нужна роль банкира или администратора. <Link to="/login">Войти</Link>
       </p>
     )
   }

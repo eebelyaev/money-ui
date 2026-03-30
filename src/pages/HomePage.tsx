@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { BankerHomePage } from './BankerHomePage'
 import { ClientPage } from './ClientPage'
@@ -31,13 +31,10 @@ export function HomePage() {
   if (!personId || !role) {
     return <GuestHome />
   }
-  if (role === 'admin') {
-    return <Navigate to="/admin" replace />
-  }
   if (role === 'client') {
     return <ClientPage />
   }
-  if (role === 'banker') {
+  if (role === 'banker' || role === 'admin') {
     return <BankerHomePage />
   }
   return <GuestHome />

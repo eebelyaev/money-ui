@@ -212,62 +212,60 @@ export function AdminPaymentsTab({ showErr }: Props) {
 
   return (
     <>
-      <p className="field-hint">
-        Список из <code className="font-mono">GET /payments</code> — все платежи или с фильтрами: договор, плательщик
-        (опционально; период — оба поля даты или ни одного).
-      </p>
-      <div className="field-row field-row--filters" style={{ marginBottom: '1rem' }}>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-pay-cid">
-            ID договора
-          </label>
-          <input id="adm-pay-cid" className="input" type="number" min={1} placeholder="все" value={fContractId} onChange={(e) => setFContractId(e.target.value)} />
+      <div className="toolbar toolbar--admin-contracts" style={{ marginBottom: '1rem' }}>
+        <div className="toolbar__btns">
+          <button type="button" className="btn btn--primary" onClick={() => setCreateOpen(true)}>
+            Новый платёж
+          </button>
+          <button type="button" className="btn btn--secondary" onClick={() => loadList()} disabled={loading}>
+            {loading ? (
+              <span className="loading-inline">
+                <span className="spinner" aria-hidden />
+                Обновление…
+              </span>
+            ) : (
+              'Обновить список'
+            )}
+          </button>
         </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-pay-pid">
-            Плательщик
-          </label>
-          <select
-            id="adm-pay-pid"
-            className="input"
-            value={fPayerId}
-            onChange={(e) => setFPayerId(e.target.value)}
-          >
-            <option value="">Все</option>
-            {sortById(persons ?? []).map((p) => (
-              <option key={p.id} value={String(p.id)}>
-                {personSelectLabel(p)}
-              </option>
-            ))}
-          </select>
+        <div className="toolbar__filters toolbar__filters--admin-payments">
+          <div className="field-row field-row--pay-filter">
+            <label className="field-label" htmlFor="adm-pay-cid">
+              ID договора
+            </label>
+            <input id="adm-pay-cid" className="input" type="number" min={1} placeholder="все" value={fContractId} onChange={(e) => setFContractId(e.target.value)} />
+          </div>
+          <div className="field-row field-row--pay-filter">
+            <label className="field-label" htmlFor="adm-pay-pid">
+              Клиент
+            </label>
+            <select
+              id="adm-pay-pid"
+              className="input"
+              value={fPayerId}
+              onChange={(e) => setFPayerId(e.target.value)}
+            >
+              <option value="">Все</option>
+              {sortById(persons ?? []).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {personSelectLabel(p)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field-row field-row--pay-filter">
+            <label className="field-label" htmlFor="adm-pay-from">
+              С даты
+            </label>
+            <input id="adm-pay-from" className="input" type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+          </div>
+          <div className="field-row field-row--pay-filter">
+            <label className="field-label" htmlFor="adm-pay-to">
+              По дату
+            </label>
+            <input id="adm-pay-to" className="input" type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+          </div>
         </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-pay-from">
-            С даты
-          </label>
-          <input id="adm-pay-from" className="input" type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
-        </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="adm-pay-to">
-            По дату
-          </label>
-          <input id="adm-pay-to" className="input" type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
-        </div>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="btn btn--primary" onClick={() => setCreateOpen(true)}>
-          Новый платёж
-        </button>
-        <button type="button" className="btn btn--secondary" onClick={() => loadList()} disabled={loading}>
-          {loading ? (
-            <span className="loading-inline">
-              <span className="spinner" aria-hidden />
-              Обновление…
-            </span>
-          ) : (
-            'Обновить список'
-          )}
-        </button>
       </div>
 
       {loading && rows === null ? (
@@ -284,6 +282,7 @@ export function AdminPaymentsTab({ showErr }: Props) {
             <thead>
               <tr>
                 <th scope="col">ID</th>
+                <th scope="col">Дата</th>
                 <th scope="col" className="num">
                   Договор
                 </th>
@@ -291,7 +290,6 @@ export function AdminPaymentsTab({ showErr }: Props) {
                 <th scope="col" className="num">
                   Сумма
                 </th>
-                <th scope="col">Дата</th>
                 <th scope="col">Комментарий</th>
                 <th scope="col" className="cell-actions">
                   Действия
@@ -302,10 +300,10 @@ export function AdminPaymentsTab({ showErr }: Props) {
               {rows.map((r) => (
                 <tr key={r.id}>
                   <td className="font-mono tabular-nums">{r.id}</td>
+                  <td>{formatDateIso(r.date)}</td>
                   <td className="num">{r.contract_id}</td>
                   <td>{payerNameById.get(r.payer_id) ?? `id ${r.payer_id}`}</td>
                   <td className="num">{formatMoney(r.amount)}</td>
-                  <td>{formatDateIso(r.date)}</td>
                   <td>{r.comment}</td>
                   <td className="cell-actions">
                     <button type="button" className="btn btn--secondary btn--sm" onClick={() => openEdit(r)} disabled={submitting}>

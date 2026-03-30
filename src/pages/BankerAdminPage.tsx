@@ -17,14 +17,5 @@ export function BankerAdminPage() {
       </p>
     )
   }
-  return (
-    <>
-      <h1 className="page-title">Администрирование</h1>
-      <p className="page-intro">
-        Справочники и операции: участники, договоры, платежи.{' '}
-        <Link to="/">На главную</Link>
-      </p>
-      <BankerAdminTabs />
-    </>
-  )
+  return <BankerAdminTabs />
 }
