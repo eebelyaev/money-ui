@@ -6,7 +6,8 @@ import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../context/ToastContext'
 import type { OpenClientContract } from './ClientPage'
 import type { SnapshotRow } from '../types/snapshot'
-import { formatDateIso, formatMoney, formatPercent } from '../utils/format'
+import { localTodayYmd } from '../utils/debtProjection'
+import { formatDateIso, formatMoney, formatMoneyRounded, formatPercent } from '../utils/format'
 
 type BankerClientSummary = {
   client_id: number
@@ -173,149 +174,151 @@ export function BankerHomePage() {
         ) : !clients || clients.length === 0 ? (
           <p className="field-hint">Нет клиентов с открытыми договорами в вашем портфеле.</p>
         ) : (
-          <div className="table-wrap">
-            <table className="data data--tight">
-              <thead>
-                <tr>
-                  <th scope="col">Имя</th>
-                  <th scope="col" className="num">
-                    Всего долг
-                  </th>
-                  <th scope="col" className="cell-actions">
-                    Договоры
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {clients.map((c) => {
-                  const isClientOpen = expandedClientId === c.client_id
-                  const contracts = contractsByClient[c.client_id]
-                  const regionId = `${contractsPanelId}-${c.client_id}`
-                  return (
-                    <Fragment key={c.client_id}>
-                      <tr>
-                        <td>
-                          {[c.first_name, c.last_name].filter(Boolean).join(' ').trim() || '—'}
-                        </td>
-                        <td className="num">{formatMoney(c.total_debt)}</td>
-                        <td className="cell-actions">
-                          <button
-                            type="button"
-                            className="btn btn--secondary btn--sm"
-                            aria-expanded={isClientOpen}
-                            aria-controls={regionId}
-                            onClick={() => onContractsClick(c.client_id)}
-                          >
-                            Договоры
-                          </button>
-                        </td>
-                      </tr>
-                      {isClientOpen && (
-                        <tr className="table-accordion__row">
-                          <td colSpan={3} className="accordion-panel accordion-panel--nested">
-                            <div id={regionId} role="region" aria-label={'Договоры клиента ' + c.client_id}>
-                              {loadingContracts && contracts === null ? (
-                                <p>Загрузка…</p>
-                              ) : contracts && contracts.length === 0 ? (
-                                <p className="field-hint">Нет открытых договоров.</p>
-                              ) : (
-                                <div className="table-wrap">
-                                  <table className="data data--tight">
-                                    <thead>
-                                      <tr>
-                                        <th scope="col">№</th>
-                                        <th scope="col">Дата</th>
-                                        <th scope="col" className="num">
-                                          Ставка
-                                        </th>
-                                        <th scope="col" className="num">
-                                          Долг
-                                        </th>
-                                        <th scope="col" className="cell-actions">
-                                          Действия
-                                        </th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {[...(contracts ?? [])]
-                                        .sort((a, b) => b.total_debt - a.total_debt)
-                                        .map((r) => {
-                                        const titleId = `${baseId}-hist-title-${r.contract_id}`
-                                        const panelId = `${baseId}-hist-panel-${r.contract_id}`
-                                        const histOpen = expandedContractId === r.contract_id
-                                        return (
-                                          <Fragment key={r.contract_id}>
-                                            <tr>
-                                              <td className="font-mono tabular-nums">{r.contract_id}</td>
-                                              <td>{formatDateIso(r.doc_date)}</td>
-                                              <td className="num">{formatPercent(r.interest_rate)}</td>
-                                              <td className="num">{formatMoney(r.total_debt)}</td>
-                                              <td className="cell-actions">
-                                                <button
-                                                  type="button"
-                                                  className="btn btn--primary btn--sm"
-                                                  onClick={() => navigate('/contracts/' + r.contract_id)}
-                                                >
-                                                  Открыть
-                                                </button>{' '}
-                                                <button
-                                                  type="button"
-                                                  className="btn btn--secondary btn--sm"
-                                                  aria-expanded={histOpen}
-                                                  aria-controls={panelId}
-                                                  onClick={() => onHistoryClick(r.contract_id)}
-                                                >
-                                                  История
-                                                </button>
-                                              </td>
-                                            </tr>
-                                            {histOpen && (
-                                              <tr className="table-accordion__row">
-                                                <td colSpan={5} className="accordion-panel">
-                                                  <div id={panelId} role="region" aria-labelledby={titleId}>
-                                                    <h3 className="accordion-panel__title" id={titleId}>
-                                                      История остатков по договору №{r.contract_id}
-                                                    </h3>
-                                                    {snapLoading ? (
-                                                      <p>Загрузка…</p>
-                                                    ) : snapshots && snapshots.length === 0 ? (
-                                                      <p className="field-hint">Нет снимков.</p>
-                                                    ) : (
-                                                      <SnapshotHistoryTable
-                                                        contractDocYmd={r.doc_date.trim().slice(0, 10)}
-                                                        snapshots={snapshots}
-                                                      />
-                                                    )}
-                                                  </div>
-                                                </td>
-                                              </tr>
-                                            )}
-                                          </Fragment>
-                                        )
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              )}
-                            </div>
+          <>
+            <dl className="contract-spec">
+              <div className="contract-spec__row contract-spec__row--debt">
+                <dt>Сколько должны на сегодня</dt>
+                <dd>
+                  <span className="contract-spec__value contract-spec__value--amount">
+                    {formatMoneyRounded(clientsTotals.totalDebt)}
+                  </span>
+                  <p className="field-hint contract-spec__hint">на {formatDateIso(localTodayYmd())}</p>
+                </dd>
+              </div>
+            </dl>
+            <div className="table-wrap">
+              <table className="data data--tight data--banker-home">
+                <thead>
+                  <tr>
+                    <th scope="col">Имя</th>
+                    <th scope="col" className="num">
+                      Всего долг
+                    </th>
+                    <th scope="col" className="cell-actions">
+                      Договоры
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clients.map((c) => {
+                    const isClientOpen = expandedClientId === c.client_id
+                    const contracts = contractsByClient[c.client_id]
+                    const regionId = `${contractsPanelId}-${c.client_id}`
+                    return (
+                      <Fragment key={c.client_id}>
+                        <tr>
+                          <td>{[c.first_name, c.last_name].filter(Boolean).join(' ').trim() || '—'}</td>
+                          <td className="num">{formatMoney(c.total_debt)}</td>
+                          <td className="cell-actions">
+                            <button
+                              type="button"
+                              className="btn btn--secondary btn--sm"
+                              aria-expanded={isClientOpen}
+                              aria-controls={regionId}
+                              onClick={() => onContractsClick(c.client_id)}
+                            >
+                              Договоры
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="data-table-foot">
-                  <th scope="row">Итого</th>
-                  <td className="num">{formatMoney(clientsTotals.totalDebt)}</td>
-                  <td className="cell-actions">
-                    <span className="data-table-foot__meta">{clientsTotals.contractsCount} дог.</span>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                        {isClientOpen && (
+                          <tr className="table-accordion__row">
+                            <td colSpan={3} className="accordion-panel accordion-panel--nested">
+                              <div id={regionId} role="region" aria-label={'Договоры клиента ' + c.client_id}>
+                                {loadingContracts && contracts === null ? (
+                                  <p>Загрузка…</p>
+                                ) : contracts && contracts.length === 0 ? (
+                                  <p className="field-hint">Нет открытых договоров.</p>
+                                ) : (
+                                  <div className="table-wrap">
+                                    <table className="data data--tight">
+                                      <thead>
+                                        <tr>
+                                          <th scope="col">№</th>
+                                          <th scope="col">Дата</th>
+                                          <th scope="col" className="num">
+                                            Ставка
+                                          </th>
+                                          <th scope="col" className="num">
+                                            Долг
+                                          </th>
+                                          <th scope="col" className="cell-actions">
+                                            Действия
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {[...(contracts ?? [])]
+                                          .sort((a, b) => b.total_debt - a.total_debt)
+                                          .map((r) => {
+                                            const titleId = `${baseId}-hist-title-${r.contract_id}`
+                                            const panelId = `${baseId}-hist-panel-${r.contract_id}`
+                                            const histOpen = expandedContractId === r.contract_id
+                                            return (
+                                              <Fragment key={r.contract_id}>
+                                                <tr>
+                                                  <td className="font-mono tabular-nums">{r.contract_id}</td>
+                                                  <td>{formatDateIso(r.doc_date)}</td>
+                                                  <td className="num">{formatPercent(r.interest_rate)}</td>
+                                                  <td className="num">{formatMoney(r.total_debt)}</td>
+                                                  <td className="cell-actions">
+                                                    <button
+                                                      type="button"
+                                                      className="btn btn--primary btn--sm"
+                                                      onClick={() => navigate('/contracts/' + r.contract_id)}
+                                                    >
+                                                      Открыть
+                                                    </button>{' '}
+                                                    <button
+                                                      type="button"
+                                                      className="btn btn--secondary btn--sm"
+                                                      aria-expanded={histOpen}
+                                                      aria-controls={panelId}
+                                                      onClick={() => onHistoryClick(r.contract_id)}
+                                                    >
+                                                      История
+                                                    </button>
+                                                  </td>
+                                                </tr>
+                                                {histOpen && (
+                                                  <tr className="table-accordion__row">
+                                                    <td colSpan={5} className="accordion-panel">
+                                                      <div id={panelId} role="region" aria-labelledby={titleId}>
+                                                        <h3 className="accordion-panel__title" id={titleId}>
+                                                          История остатков по договору №{r.contract_id}
+                                                        </h3>
+                                                        {snapLoading ? (
+                                                          <p>Загрузка…</p>
+                                                        ) : snapshots && snapshots.length === 0 ? (
+                                                          <p className="field-hint">Нет снимков.</p>
+                                                        ) : (
+                                                          <SnapshotHistoryTable
+                                                            contractDocYmd={r.doc_date.trim().slice(0, 10)}
+                                                            snapshots={snapshots}
+                                                          />
+                                                        )}
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                )}
+                                              </Fragment>
+                                            )
+                                          })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </section>
     </>

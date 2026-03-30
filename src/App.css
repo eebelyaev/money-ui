@@ -494,6 +494,7 @@ fieldset.form-fieldset legend {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
+  min-width: 0;
 }
 
 .table-wrap__hint {
@@ -566,8 +567,14 @@ table.data th.num {
   font-variant-numeric: tabular-nums;
 }
 
+/* BankerHomePage: фиксируем раскладку, чтобы не было эффекта "лишней колонки" */
+table.data--banker-home {
+  table-layout: fixed;
+}
+
 table.data .cell-actions {
   white-space: nowrap;
+  text-align: right;
 }
 
 /* Главная (банкир / клиент): плотные строки (размер шрифта как у обычной .data) */
@@ -718,6 +725,8 @@ table.payment-table td.payment-table__icon-cell {
 .accordion-panel--nested {
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg);
+  padding-right: 0;
+  min-width: 0;
 }
 
 .accordion-panel__title {

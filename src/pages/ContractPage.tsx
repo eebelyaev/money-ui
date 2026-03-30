@@ -366,11 +366,6 @@ export function ContractPage() {
       </nav>
 
       <h1 className="page-title">{contractPageTitle}</h1>
-      {!isClientViewer && (
-        <p className="page-intro">
-          История остатков по снимкам и пересчёт; новый платёж — из карточки договора.
-        </p>
-      )}
 
       {msg?.type === 'err' && (
         <div className="alert alert--error alert--persistent" role="alert">
@@ -392,17 +387,7 @@ export function ContractPage() {
 
       <section className="card contract-card" aria-busy={loadingContract}>
         <div className="contract-card__head">
-          <h2 className="card__title">Карточка договора</h2>
-          {contract && !isClientViewer && (
-            <button
-              type="button"
-              className="btn btn--primary btn--sm"
-              onClick={onNewPaymentClick}
-              disabled={loadingContract || submitting || !!contract.close_date}
-            >
-              Новый платёж
-            </button>
-          )}
+          <h2 className="card__title sr-only">Карточка договора</h2>
         </div>
         {loadingContract && !contract ? (
           <div className="loading-inline" style={{ minHeight: '6rem' }}>
@@ -496,24 +481,18 @@ export function ContractPage() {
             {!isClientViewer && (
               <div className="contract-card__recalc">
                 <div className="contract-recalc-row">
-                  <label className="field-label contract-recalc-row__label" htmlFor="rec-from">
-                    Пересчитать с даты
-                  </label>
-                  <input
-                    id="rec-from"
-                    className="input contract-recalc-row__date"
-                    type="date"
-                    value={recFrom}
-                    onChange={(e) => setRecFrom(e.target.value)}
-                  />
+                  <button
+                    type="button"
+                    className="btn btn--primary contract-recalc-row__btn"
+                    onClick={onNewPaymentClick}
+                    disabled={loadingContract || submitting || !!contract.close_date}
+                  >
+                    Новый платёж
+                  </button>
                   <button
                     type="button"
                     className="btn btn--danger contract-recalc-row__btn"
                     onClick={() => {
-                      if (!recFrom) {
-                        showErr(new Error('Укажите дату начала пересчёта'))
-                        return
-                      }
                       setMsg(null)
                       setConfirmRecalc(true)
                     }}
@@ -735,21 +714,53 @@ export function ContractPage() {
       )}
 
       {!isClientViewer && (
-        <ConfirmDialog
-          open={confirmRecalc}
-          title="Запустить пересчёт?"
-          message={
-            recFrom
-              ? `Будут пересобраны снимки с даты ${formatDateIso(recFrom)} (включительно по правилам договора). Продолжить?`
-              : ''
-          }
-          confirmLabel="Пересчитать"
-          danger
-          onCancel={() => setConfirmRecalc(false)}
-          onConfirm={() => {
-            void onRecalc()
-          }}
-        />
+        confirmRecalc ? (
+          <div
+            className="dialog-backdrop"
+            role="presentation"
+            onMouseDown={() => {
+              if (!submitting) setConfirmRecalc(false)
+            }}
+          >
+            <div
+              className="dialog dialog--form"
+              role="dialog"
+              aria-modal="true"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <h2 className="dialog__title">Пересчёт с даты</h2>
+              <div className="field-grid">
+                <div className="field-row">
+                  <label className="field-label" htmlFor="rec-from">
+                    Дата
+                  </label>
+                  <input
+                    id="rec-from"
+                    className="input"
+                    type="date"
+                    value={recFrom}
+                    onChange={(e) => setRecFrom(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="dialog__actions" style={{ marginTop: 'var(--space-4)' }}>
+                <button type="button" className="btn btn--secondary" onClick={() => setConfirmRecalc(false)} disabled={submitting}>
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  onClick={() => {
+                    void onRecalc()
+                  }}
+                  disabled={submitting || !!contract?.close_date}
+                >
+                  Пересчитать
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null
       )}
 
       <ConfirmDialog

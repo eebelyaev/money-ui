@@ -206,7 +206,7 @@ export const historyTypeEmoji: Record<HistoryRowType, string> = {
 }
 
 export const historyTypeLabel: Record<HistoryRowType, string> = {
-  Accrued: 'Начисление на тело',
+  Accrued: 'Начисление',
   Issued: 'Выдача',
   Payment: 'Платёж',
 }

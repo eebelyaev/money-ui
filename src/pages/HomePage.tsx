@@ -6,18 +6,35 @@ import { ClientPage } from './ClientPage'
 function GuestHome() {
   return (
     <>
-      <h1 className="page-title">Главная</h1>
       <p className="page-intro">
-        Войдите по телефону или логину и паролю — интерфейс банкира, клиента или администратора откроется на этой же странице.
+        Money помогает вести учёт займов и смотреть задолженность. Роль и доступ назначаются администратором.
       </p>
-      <div className="card" style={{ maxWidth: '28rem' }}>
-        <p className="field-hint" style={{ marginTop: 0 }}>
-          Учётные записи и роли задаются в базе calculations (телефон — <span className="font-mono">person.login</span>, логин —{' '}
-          <span className="font-mono">person.username</span>, пароль,
-          таблица <span className="font-mono">user_role</span>). В запросах используется JWT или, в режиме разработки,
-          заголовки <span className="font-mono">X-Person-Id</span> / <span className="font-mono">X-Role</span>.
-        </p>
-        <Link to="/login" className="btn btn--primary" style={{ marginTop: '1rem', display: 'inline-flex' }}>
+      <div className="card" style={{ maxWidth: '44rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-6)', alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 18rem' }}>
+            <h2 className="section-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Для клиента
+            </h2>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              <li>Видеть общую сумму к оплате на сегодня.</li>
+              <li>Открывать договор и смотреть задолженность по нему.</li>
+              <li>Просматривать историю начислений и операций.</li>
+            </ul>
+          </div>
+
+          <div style={{ flex: '1 1 18rem' }}>
+            <h2 className="section-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Для банкира
+            </h2>
+            <ul style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+              <li>Видеть клиентов портфеля и общую задолженность.</li>
+              <li>Открывать договоры и анализировать начисления.</li>
+              <li>Делать пересчёт, закрывать договоры и добавлять платежи.</li>
+            </ul>
+          </div>
+        </div>
+
+        <Link to="/login" className="btn btn--primary" style={{ marginTop: '1.25rem', display: 'inline-flex' }}>
           Войти
         </Link>
       </div>

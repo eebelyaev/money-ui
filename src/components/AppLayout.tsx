@@ -50,18 +50,20 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <footer className="shell__footer">
-        <span className="shell__footer-label">API</span>
-        <a href="/docs" className="shell__footer-link">
-          Swagger
-        </a>
-        <span className="shell__footer-sep" aria-hidden>
-          ·
-        </span>
-        <a href="/health" className="shell__footer-link">
-          /health
-        </a>
-      </footer>
+      {role === 'admin' && !!personId && (
+        <footer className="shell__footer">
+          <span className="shell__footer-label">API</span>
+          <a href="/docs" className="shell__footer-link">
+            Swagger
+          </a>
+          <span className="shell__footer-sep" aria-hidden>
+            ·
+          </span>
+          <a href="/health" className="shell__footer-link">
+            /health
+          </a>
+        </footer>
+      )}
     </div>
   )
 }
